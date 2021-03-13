@@ -309,17 +309,6 @@
                 },
                 {
                   "Effect": "Allow",
-                  "Action": [
-                    "codedeploy:CreateDeployment",
-                    "codedeploy:GetApplicationRevision",
-                    "codedeploy:GetDeployment",
-                    "codedeploy:GetDeploymentConfig",
-                    "codedeploy:RegisterApplicationRevision"
-                  ],
-                  "Resource": "*"
-                },
-                {
-                  "Effect": "Allow",
                   "Action": ["lambda:InvokeFunction", "lambda:ListFunctions"],
                   "Resource": "*"
                 },
@@ -328,7 +317,11 @@
                   "Action": ["iam:PassRole"],
                   "Resource": "*"
                 },
-                {"Effect": "Allow", "Action": ["s3:*"], "Resource": "*"}
+                {
+                    "Effect": "Allow", 
+                    "Action": [ "s3:*" ], 
+                    "Resource": "*"
+                }
               ]
             }
           }
