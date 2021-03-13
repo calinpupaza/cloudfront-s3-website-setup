@@ -1,100 +1,109 @@
 {
-    "AWSTemplateFormatVersion": "2010-09-09",
-    "Description": "Setup template for a HTTPS CloudFront S3 backed static website with a deployment pipeline",
-    "Metadata": {
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Setup template for a HTTPS CloudFront S3 backed static website with a deployment pipeline",
+  "Parameters": {
+    "DomainName": {
+      "Description": "Full DNS Domain Name the website will be resolved under. This will be used to create the S3 bucket, CloudFront CNAME and IAM SSL certificates",
+      "Type": "String"
     },
-    "Parameters": {
-        "DomainName": {
-            "Description": "Full DNS Domain Name the website will be resolved under. This will be used to create the S3 bucket, CloudFront CNAME and IAM SSL certificates",
-            "Type": "String"
-        },
-        "Route53HostedZoneID": {
-            "Description": "The existing Rote53 zone that will host the A records for the websites.",
-            "Type": "AWS::Route53::HostedZone::Id"
-        },
-        "BranchName": {
-            "Description": "CodeCommit branch name",
-            "Type": "String",
-            "Default": "master"
+    "Route53HostedZoneID": {
+      "Description": "The existing Rote53 zone that will host the A records for the websites.",
+      "Type": "AWS::Route53::HostedZone::Id"
+    },
+    "BranchName": {
+      "Description": "CodeCommit branch name",
+      "Type": "String",
+      "Default": "master"
+    }
+  },
+  "Resources": {
+    "S3StaticSiteBucket": {
+      "Type": "AWS::S3::Bucket",
+      "Properties": {
+        "AccessControl": "PublicRead",
+        "BucketName": {"Fn::Sub": "www-${DomainName}"},
+        "WebsiteConfiguration": {
+          "ErrorDocument": "error.html",
+          "IndexDocument": "index.html"
         }
+      }
     },
-    "Resources": {        
-        "S3StaticSiteBucket": {
-            "Type": "AWS::S3::Bucket",
-            "Properties": {
-                "AccessControl": "PublicRead",
-                "BucketName": { "Fn::Sub": "www-${DomainName}" },
-                "WebsiteConfiguration": {
-                    "ErrorDocument" : "error.html",
-                    "IndexDocument" : "index.html"
-                }
-            }
+    "HtmlCodeRepository": {
+      "Type": "AWS::CodeCommit::Repository",
+      "Properties": {
+        "RepositoryDescription": {
+          "Fn::Sub": "HTML Code Repository for ${DomainName}"
         },
-        "HtmlCodeRepository": {
-           "Type": "AWS::CodeCommit::Repository",
-           "Properties": {
-              "RepositoryDescription": { "Fn::Sub": "HTML Code Repository for ${DomainName}" },
-              "RepositoryName": { "Fn::Sub": "html-${DomainName}" }
+        "RepositoryName": {"Fn::Sub": "html-${DomainName}"}
+      }
+    },
+    "CloudfrontDistribution": {
+      "Type": "AWS::CloudFront::Distribution",
+      "Properties": {
+        "DistributionConfig": {
+          "Aliases": [{"Ref": "DomainName"}],
+          "Comment": {"Ref": "DomainName"},
+          "DefaultCacheBehavior": {
+            "CachePolicyId": "658327ea-f89d-4fab-a63d-7e88639e58f6",
+            "Compress": true,
+            "TargetOriginId": "root-s3-website",
+            "ViewerProtocolPolicy": "redirect-to-https"
+          },
+          "Origins": [
+            {
+              "CustomOriginConfig": {
+                "HTTPPort": 80,
+                "OriginProtocolPolicy": "http-only"
+              },
+              "DomainName": {
+                "Fn::Sub": "www-${DomainName}.s3-website.${AWS::Region}.amazonaws.com"
+              },
+              "Id": "root-s3-website"
+            }
+          ],
+          "DefaultRootObject": "index.html",
+          "Enabled": true,
+          "ViewerCertificate": {
+            "AcmCertificateArn": {"Ref": "HTTPSCertificate"},
+            "SslSupportMethod": "sni-only"
           }
+        }
+      }
+    },
+    "HTTPSCertificate": {
+      "Type": "AWS::CertificateManager::Certificate",
+      "Properties": {
+        "DomainName": {"Ref": "DomainName"},
+        "ValidationMethod": "DNS",
+        "DomainValidationOptions": [
+          {
+            "DomainName": {"Ref": "DomainName"},
+            "HostedZoneId": {"Ref": "Route53HostedZoneID"}
+          }
+        ]
+      }
+    },
+    "Route53ARecord": {
+      "Type": "AWS::Route53::RecordSet",
+      "DependsOn": "CloudfrontDistribution",
+      "Properties": {
+        "Name": {"Ref": "DomainName"},
+        "Type": "A",
+        "AliasTarget": {
+          "DNSName": {"Fn::GetAtt": ["CloudfrontDistribution", "DomainName"]},
+          "HostedZoneId": "Z2FDTNDATAQYW2"
         },
-        "CloudfrontDistribution": {
-            "Type": "AWS::CloudFront::Distribution",
-            "Properties": {
-               "DistributionConfig": {
-                    "Aliases" : [ { "Ref": "DomainName" } ],
-                    "Comment" : { "Ref": "DomainName" },
-                    "DefaultCacheBehavior" : {
-                        "CachePolicyId" : "658327ea-f89d-4fab-a63d-7e88639e58f6",
-                        "Compress" : true,
-                        "TargetOriginId" : "root-s3-website",
-                        "ViewerProtocolPolicy" : "redirect-to-https"
-                      },
-                    "Origins" : [ {
-                        "CustomOriginConfig" : {
-                            "HTTPPort" : 80,
-                            "OriginProtocolPolicy" : "http-only"
-                          },
-                        "DomainName" : { "Fn::Sub" : "www-${DomainName}.s3-website.${AWS::Region}.amazonaws.com" },
-                        "Id" : "root-s3-website"
-                      } ],                    
-                    "DefaultRootObject" : "index.html",
-                    "Enabled" : true,
-                    "ViewerCertificate" : {
-                        "AcmCertificateArn" : { "Ref": "HTTPSCertificate" },
-                        "SslSupportMethod": "sni-only"
-                      }
-                    }
-            }
-         }, 
-        "HTTPSCertificate" : {
-            "Type" : "AWS::CertificateManager::Certificate",
-            "Properties" : {
-                "DomainName" : { "Ref": "DomainName" },
-                "ValidationMethod" : "DNS",
-                "DomainValidationOptions" : [ {
-                    "DomainName" : { "Ref": "DomainName" },
-                    "HostedZoneId" : { "Ref": "Route53HostedZoneID" }
-                  }]
-              }
-        },
-        "Route53ARecord" : {
-            "Type": "AWS::Route53::RecordSet",
-            "DependsOn": "CloudfrontDistribution",
-            "Properties": {
-                "Name": { "Ref": "DomainName" },
-                "Type": "A",
-                "AliasTarget": {
-                    "DNSName": { "Fn::GetAtt": [ "CloudfrontDistribution", "DomainName" ] },
-                    "HostedZoneId": "Z2FDTNDATAQYW2"
-                },
-                "HostedZoneId": { "Ref": "Route53HostedZoneID" }
-            }
-        },
-        "LambdaCloudfrontInvalidate": {
-          "Type": "AWS::Lambda::Function",
-          "Properties": {
-            "Code": {
-              "ZipFile": { "Fn::Join": [ "\n", [
+        "HostedZoneId": {"Ref": "Route53HostedZoneID"}
+      }
+    },
+    "LambdaCloudfrontInvalidate": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "Code": {
+          "ZipFile": {
+            "Fn::Join": [
+              "\n",
+              [
                 "import boto3, time, os, json",
                 "def handler(event, context):",
                 "  cf_distrib_id = os.environ['CFDISTRIBUTIONID']",
@@ -108,277 +117,245 @@
                 "    codepipeline.put_job_failure_result(jobId=cp_job_id, failureDetails={ 'type': 'JobFailed', 'message': str(ex)})",
                 "  else:",
                 "    codepipeline.put_job_success_result(jobId=cp_job_id)"
-              ]]}
-            },
-            "Handler": "index.handler",
-            "Role": {"Fn::GetAtt" : ["LambdaExecutionRole", "Arn"] },
-            "Runtime": "python3.8",
-            "FunctionName": { "Fn::Sub": "lambda-invalidate-cloudfront-${CloudfrontDistribution}" },
-            "MemorySize": 128,
-            "Timeout": 30,
-            "Environment": {
-              "Variables": {
-                "CFDISTRIBUTIONID": { "Ref" : "CloudfrontDistribution" }
-              }
-            },
-            "Description": { "Fn::Sub": "Lambda that invaldiates CF distribution for ${DomainName}" }
-          }
-        },
-        "LambdaExecutionRole": {
-           "Type": "AWS::IAM::Role",
-           "Properties": {
-              "AssumeRolePolicyDocument": {
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Effect": "Allow",
-                        "Principal": {
-                            "Service": [
-                                "lambda.amazonaws.com"
-                            ]
-                        },
-                        "Action": [
-                            "sts:AssumeRole"
-                        ]
-                    }
-                ]
-                },
-              "Policies": [ 
-                {
-                    "PolicyName": "policy-create-invalidation",
-                    "PolicyDocument": {
-                        "Version": "2012-10-17",
-                        "Statement": [
-                            {
-                                "Effect": "Allow",
-                                "Action": "cloudfront:CreateInvalidation",
-                                "Resource": { "Fn::Sub": "arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${CloudfrontDistribution}" }
-                            }
-                        ]
-                    }
-                },
-                {
-                    "PolicyName": "policy-codepipeline",
-                    "PolicyDocument": {                    
-                        "Version": "2012-10-17",
-                        "Statement": [
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "codepipeline:PutJobFailureResult",
-                                    "codepipeline:PutJobSuccessResult"
-                                ],
-                                "Resource": "*"                                
-                            }
-                        ]
-                    }
-                }                  
-               ]
-           }
-        },
-        "CodepipelineArtifactBucket": {
-            "Type": "AWS::S3::Bucket"
-        },
-        "Codepipeline": {
-          "Type" : "AWS::CodePipeline::Pipeline",
-          "Properties" : {
-            "ArtifactStore": {
-                "Type": "S3",
-                "Location": { "Ref" : "CodepipelineArtifactBucket" }
-            },
-            "Name" : { "Fn::Sub": "pipeline-html-${DomainName}" },
-            "RestartExecutionOnUpdate" : false,
-            "RoleArn" : { "Fn::GetAtt": [ "CodepipelineRole", "Arn" ]},
-            "Stages" : [ 
-                {
-                    "Name": "Source",
-                    "Actions": [
-                        {
-                          "ActionTypeId" : {
-                            "Category": "Source",
-                            "Owner": "AWS",
-                            "Version": 1,
-                            "Provider": "CodeCommit"
-                          },
-                          "Configuration": {
-                            "BranchName": { "Ref": "BranchName" },
-                            "RepositoryName": { "Fn::GetAtt": [ "HtmlCodeRepository", "Name" ] },
-                            "PollForSourceChanges": false
-                        },
-                        "InputArtifacts" : [ ],
-                        "Name" : "SourceAction",
-                        "OutputArtifacts": [
-                            {
-                                "Name": "SourceOutput"
-                            }
-                        ],
-                        "RunOrder" : 1
-                    }
-                    ]
-                },
-                {
-                    "Name": "Deploy",
-                    "Actions": [
-                        {
-                          "ActionTypeId" : {
-                            "Category": "Invoke",
-                            "Owner": "AWS",
-                            "Version": "1",
-                            "Provider": "Lambda"
-                          },
-                          "Configuration" : { "FunctionName" : { "Ref": "LambdaCloudfrontInvalidate" } },
-                          "Name" : "InvalidateCloudFrontDistribution",
-                          "RunOrder" : 1
-                        }
-                    ]
-                }
-                
+              ]
             ]
           }
         },
-        "CodepipelineRole": {
-           "Type": "AWS::IAM::Role",
-           "Properties": {
-              "AssumeRolePolicyDocument": {
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Effect": "Allow",
-                        "Principal": {
-                            "Service": [
-                                "codepipeline.amazonaws.com"
-                            ]
-                        },
-                        "Action": "sts:AssumeRole"
-                    }
-                    ]
-                },
-                "Policies": [
-                    {
-                        "PolicyName": "AWS-CodePipeline-Service-Role",
-                        "PolicyDocument": {
-                            "Version": "2012-10-17",
-                            "Statement": [
-                                {
-                                    "Effect": "Allow",
-                                    "Action": [
-                                        "codecommit:CancelUploadArchive",
-                                        "codecommit:GetBranch",
-                                        "codecommit:GetCommit",
-                                        "codecommit:GetUploadArchiveStatus",
-                                        "codecommit:UploadArchive"
-                                    ],
-                                    "Resource": "*"
-                                },
-                                {
-                                    "Effect": "Allow",
-                                    "Action": [
-                                        "codedeploy:CreateDeployment",
-                                        "codedeploy:GetApplicationRevision",
-                                        "codedeploy:GetDeployment",
-                                        "codedeploy:GetDeploymentConfig",
-                                        "codedeploy:RegisterApplicationRevision"
-                                    ],
-                                    "Resource": "*"
-                                },                                
-                                {
-                                    "Effect": "Allow",
-                                    "Action": [
-                                        "lambda:InvokeFunction",
-                                        "lambda:ListFunctions"
-                                    ],
-                                    "Resource": "*"
-                                },
-                                {
-                                    "Effect": "Allow",
-                                    "Action": [
-                                        "iam:PassRole"
-                                    ],
-                                    "Resource": "*"
-                                },
-                                {
-                                    "Effect": "Allow",
-                                    "Action": [
-                                        "s3:*"
-                                    ],
-                                    "Resource": "*"
-                                }
-                            ]
-                        }
-                    }
-                ]
-           }
+        "Handler": "index.handler",
+        "Role": {"Fn::GetAtt": ["LambdaExecutionRole", "Arn"]},
+        "Runtime": "python3.8",
+        "FunctionName": {
+          "Fn::Sub": "lambda-invalidate-cloudfront-${CloudfrontDistribution}"
         },
-        "CloudWatchEventRole": {
-            "Type": "AWS::IAM::Role",
-            "Properties": {
-                "AssumeRolePolicyDocument": {
-                    "Version": "2012-10-17",
-                    "Statement": [
-                        {
-                            "Effect": "Allow",
-                            "Principal": {
-                                "Service": [
-                                    "events.amazonaws.com"
-                                ]
-                            },
-                            "Action": "sts:AssumeRole"
-                        }
-                    ]
-                },
-                "Path": "/",
-                "Policies": [
-                    {
-                        "PolicyName": "pipeline-execution-permissions",
-                        "PolicyDocument": {
-                            "Version": "2012-10-17",
-                            "Statement": [
-                                {
-                                    "Effect": "Allow",
-                                    "Action": "codepipeline:StartPipelineExecution",
-                                    "Resource": { "Fn::Sub": "arn:${AWS::Partition}:codepipeline:${AWS::Region}:${AWS::AccountId}:${Codepipeline}" }
-                                }
-                            ]
-                        }
-                    }
-                ]
-            }
+        "MemorySize": 128,
+        "Timeout": 30,
+        "Environment": {
+          "Variables": {"CFDISTRIBUTIONID": {"Ref": "CloudfrontDistribution"}}
         },
-        "CloudWatchEventInvocationRule": {
-            "Type": "AWS::Events::Rule",
-            "Properties": {
-                "EventPattern": {
-                    "source": [
-                        "aws.codecommit"
-                    ],
-                    "detail-type": [
-                        "CodeCommit Repository State Change"
-                    ],
-                    "resources": [ { "Fn::GetAtt": [ "HtmlCodeRepository", "Arn"]}
-                    ],
-                    "detail": {
-                        "event": [
-                            "referenceCreated",
-                            "referenceUpdated"
-                        ],
-                        "referenceType": [
-                            "branch"
-                        ],
-                        "referenceName": [
-                            { "Ref": "BranchName" }
-                        ]
-                    }
-                },
-                "Targets": [
-                    {
-                        "Arn": { "Fn::Sub": "arn:${AWS::Partition}:codepipeline:${AWS::Region}:${AWS::AccountId}:${Codepipeline}" },
-                        "RoleArn": {
-                            "Fn::GetAtt": [ "CloudWatchEventRole", "Arn" ]
-                        },
-                        "Id": "codepipeline-start-execution"
-                    }
-                ]
-            }
+        "Description": {
+          "Fn::Sub": "Lambda that invaldiates CF distribution for ${DomainName}"
         }
+      }
+    },
+    "LambdaExecutionRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {"Service": ["lambda.amazonaws.com"]},
+              "Action": ["sts:AssumeRole"]
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "policy-create-invalidation",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": "cloudfront:CreateInvalidation",
+                  "Resource": {
+                    "Fn::Sub": "arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${CloudfrontDistribution}"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "PolicyName": "policy-codepipeline",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "codepipeline:PutJobFailureResult",
+                    "codepipeline:PutJobSuccessResult"
+                  ],
+                  "Resource": "*"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "CodepipelineArtifactBucket": {"Type": "AWS::S3::Bucket"},
+    "Codepipeline": {
+      "Type": "AWS::CodePipeline::Pipeline",
+      "Properties": {
+        "ArtifactStore": {
+          "Type": "S3",
+          "Location": {"Ref": "CodepipelineArtifactBucket"}
+        },
+        "Name": {"Fn::Sub": "pipeline-html-${DomainName}"},
+        "RestartExecutionOnUpdate": false,
+        "RoleArn": {"Fn::GetAtt": ["CodepipelineRole", "Arn"]},
+        "Stages": [
+          {
+            "Name": "Source",
+            "Actions": [
+              {
+                "ActionTypeId": {
+                  "Category": "Source",
+                  "Owner": "AWS",
+                  "Version": 1,
+                  "Provider": "CodeCommit"
+                },
+                "Configuration": {
+                  "BranchName": {"Ref": "BranchName"},
+                  "RepositoryName": {
+                    "Fn::GetAtt": ["HtmlCodeRepository", "Name"]
+                  },
+                  "PollForSourceChanges": false
+                },
+                "InputArtifacts": [],
+                "Name": "SourceAction",
+                "OutputArtifacts": [{"Name": "SourceOutput"}],
+                "RunOrder": 1
+              }
+            ]
+          },
+          {
+            "Name": "Deploy",
+            "Actions": [
+              {
+                "ActionTypeId": {
+                  "Category": "Invoke",
+                  "Owner": "AWS",
+                  "Version": "1",
+                  "Provider": "Lambda"
+                },
+                "Configuration": {
+                  "FunctionName": {"Ref": "LambdaCloudfrontInvalidate"}
+                },
+                "Name": "InvalidateCloudFrontDistribution",
+                "RunOrder": 1
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "CodepipelineRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {"Service": ["codepipeline.amazonaws.com"]},
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "AWS-CodePipeline-Service-Role",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "codecommit:CancelUploadArchive",
+                    "codecommit:GetBranch",
+                    "codecommit:GetCommit",
+                    "codecommit:GetUploadArchiveStatus",
+                    "codecommit:UploadArchive"
+                  ],
+                  "Resource": "*"
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "codedeploy:CreateDeployment",
+                    "codedeploy:GetApplicationRevision",
+                    "codedeploy:GetDeployment",
+                    "codedeploy:GetDeploymentConfig",
+                    "codedeploy:RegisterApplicationRevision"
+                  ],
+                  "Resource": "*"
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": ["lambda:InvokeFunction", "lambda:ListFunctions"],
+                  "Resource": "*"
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": ["iam:PassRole"],
+                  "Resource": "*"
+                },
+                {"Effect": "Allow", "Action": ["s3:*"], "Resource": "*"}
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "CloudWatchEventRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {"Service": ["events.amazonaws.com"]},
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "Path": "/",
+        "Policies": [
+          {
+            "PolicyName": "pipeline-execution-permissions",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": "codepipeline:StartPipelineExecution",
+                  "Resource": {
+                    "Fn::Sub": "arn:${AWS::Partition}:codepipeline:${AWS::Region}:${AWS::AccountId}:${Codepipeline}"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "CloudWatchEventInvocationRule": {
+      "Type": "AWS::Events::Rule",
+      "Properties": {
+        "EventPattern": {
+          "source": ["aws.codecommit"],
+          "detail-type": ["CodeCommit Repository State Change"],
+          "resources": [{"Fn::GetAtt": ["HtmlCodeRepository", "Arn"]}],
+          "detail": {
+            "event": ["referenceCreated", "referenceUpdated"],
+            "referenceType": ["branch"],
+            "referenceName": [{"Ref": "BranchName"}]
+          }
+        },
+        "Targets": [
+          {
+            "Arn": {
+              "Fn::Sub": "arn:${AWS::Partition}:codepipeline:${AWS::Region}:${AWS::AccountId}:${Codepipeline}"
+            },
+            "RoleArn": {"Fn::GetAtt": ["CloudWatchEventRole", "Arn"]},
+            "Id": "codepipeline-start-execution"
+          }
+        ]
+      }
     }
+  }
 }
