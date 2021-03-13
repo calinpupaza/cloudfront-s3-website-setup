@@ -28,6 +28,26 @@
         }
       }
     },
+    "S3StaticSiteBucketPolicy": {
+        "Type": "AWS::S3::BucketPolicy",
+        "Properties": {
+            "Bucket" : { "Ref": "S3StaticSiteBucket" },
+            "PolicyDocument" : {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Sid": "PublicReadGetObject",
+                        "Effect": "Allow",
+                        "Principal": "*",
+                        "Action": [ "s3:GetObject" ],
+                        "Resource": [
+                            { "Fn::Sub": "arn:${AWS::Partition}:s3:::${DomainName}/*" }
+                        ]
+                    }
+                ]
+            }
+        }
+    },
     "HtmlCodeRepository": {
       "Type": "AWS::CodeCommit::Repository",
       "Properties": {
