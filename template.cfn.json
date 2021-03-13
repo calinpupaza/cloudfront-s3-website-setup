@@ -226,6 +226,21 @@
             "Actions": [
               {
                 "ActionTypeId": {
+                  "Category": "Deploy",
+                  "Owner": "AWS",
+                  "Version": "1",
+                  "Provider": "S3"
+                },
+                "Configuration": {
+                  "BucketName": { "Ref": "S3StaticSiteBucket" },
+                  "Extract": true
+                },
+                "InputArtifacts": [ { "Name": "SourceOutput" } ],
+                "Name": "CopyFilesToS3",
+                "RunOrder": 1
+              },
+              {
+                "ActionTypeId": {
                   "Category": "Invoke",
                   "Owner": "AWS",
                   "Version": "1",
@@ -235,7 +250,7 @@
                   "FunctionName": {"Ref": "LambdaCloudfrontInvalidate"}
                 },
                 "Name": "InvalidateCloudFrontDistribution",
-                "RunOrder": 1
+                "RunOrder": 2
               }
             ]
           }
