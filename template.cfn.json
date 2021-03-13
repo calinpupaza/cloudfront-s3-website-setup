@@ -11,11 +11,12 @@
         "Route53HostedZoneID": {
             "Description": "The existing Rote53 zone that will host the A records for the websites.",
             "Type": "AWS::Route53::HostedZone::Id"
+        },
+        "BranchName": {
+            "Description": "CodeCommit branch name",
+            "Type": "String",
+            "Default": "master"
         }
-    },
-    "Mappings": {
-    },
-    "Conditions": {
     },
     "Resources": {        
         "S3StaticSiteBucket": {
@@ -174,10 +175,210 @@
                 }                  
                ]
            }
+        },
+        "CodepipelineArtifactBucket": {
+            "Type": "AWS::S3::Bucket"
+        },
+        "Codepipeline": {
+          "Type" : "AWS::CodePipeline::Pipeline",
+          "Properties" : {
+            "ArtifactStore": {
+                "Type": "S3",
+                "Location": { "Ref" : "CodepipelineArtifactBucket" }
+            },
+            "Name" : { "Fn::Sub": "pipeline-html-${DomainName}" },
+            "RestartExecutionOnUpdate" : false,
+            "RoleArn" : { "Fn::GetAtt": [ "CodepipelineRole", "Arn" ]},
+            "Stages" : [ 
+                {
+                    "Name": "Source",
+                    "Actions": [
+                        {
+                          "ActionTypeId" : {
+                            "Category": "Source",
+                            "Owner": "AWS",
+                            "Version": 1,
+                            "Provider": "CodeCommit"
+                          },
+                          "Configuration": {
+                            "BranchName": { "Ref": "BranchName" },
+                            "RepositoryName": { "Fn::GetAtt": [ "HtmlCodeRepository", "Name" ] },
+                            "PollForSourceChanges": false
+                        },
+                        "InputArtifacts" : [ ],
+                        "Name" : "SourceAction",
+                        "OutputArtifacts": [
+                            {
+                                "Name": "SourceOutput"
+                            }
+                        ],
+                        "RunOrder" : 1
+                    }
+                    ]
+                },
+                {
+                    "Name": "Deploy",
+                    "Actions": [
+                        {
+                          "ActionTypeId" : {
+                            "Category": "Invoke",
+                            "Owner": "AWS",
+                            "Version": "1",
+                            "Provider": "Lambda"
+                          },
+                          "Configuration" : { "FunctionName" : { "Ref": "LambdaCloudfrontInvalidate" } },
+                          "Name" : "InvalidateCloudFrontDistribution",
+                          "RunOrder" : 1
+                        }
+                    ]
+                }
+                
+            ]
+          }
+        },
+        "CodepipelineRole": {
+           "Type": "AWS::IAM::Role",
+           "Properties": {
+              "AssumeRolePolicyDocument": {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {
+                            "Service": [
+                                "codepipeline.amazonaws.com"
+                            ]
+                        },
+                        "Action": "sts:AssumeRole"
+                    }
+                    ]
+                },
+                "Policies": [
+                    {
+                        "PolicyName": "AWS-CodePipeline-Service-Role",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "codecommit:CancelUploadArchive",
+                                        "codecommit:GetBranch",
+                                        "codecommit:GetCommit",
+                                        "codecommit:GetUploadArchiveStatus",
+                                        "codecommit:UploadArchive"
+                                    ],
+                                    "Resource": "*"
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "codedeploy:CreateDeployment",
+                                        "codedeploy:GetApplicationRevision",
+                                        "codedeploy:GetDeployment",
+                                        "codedeploy:GetDeploymentConfig",
+                                        "codedeploy:RegisterApplicationRevision"
+                                    ],
+                                    "Resource": "*"
+                                },                                
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "lambda:InvokeFunction",
+                                        "lambda:ListFunctions"
+                                    ],
+                                    "Resource": "*"
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "iam:PassRole"
+                                    ],
+                                    "Resource": "*"
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "s3:*"
+                                    ],
+                                    "Resource": "*"
+                                }
+                            ]
+                        }
+                    }
+                ]
+           }
+        },
+        "CloudWatchEventRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": [
+                                    "events.amazonaws.com"
+                                ]
+                            },
+                            "Action": "sts:AssumeRole"
+                        }
+                    ]
+                },
+                "Path": "/",
+                "Policies": [
+                    {
+                        "PolicyName": "pipeline-execution-permissions",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": "codepipeline:StartPipelineExecution",
+                                    "Resource": { "Fn::Sub": "arn:${AWS::Partition}:codepipeline:${AWS::Region}:${AWS::AccountId}:${Codepipeline}" }
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        },
+        "CloudWatchEventInvocationRule": {
+            "Type": "AWS::Events::Rule",
+            "Properties": {
+                "EventPattern": {
+                    "source": [
+                        "aws.codecommit"
+                    ],
+                    "detail-type": [
+                        "CodeCommit Repository State Change"
+                    ],
+                    "resources": [ { "Fn::GetAtt": [ "HtmlCodeRepository", "Arn"]}
+                    ],
+                    "detail": {
+                        "event": [
+                            "referenceCreated",
+                            "referenceUpdated"
+                        ],
+                        "referenceType": [
+                            "branch"
+                        ],
+                        "referenceName": [
+                            { "Ref": "BranchName" }
+                        ]
+                    }
+                },
+                "Targets": [
+                    {
+                        "Arn": { "Fn::Sub": "arn:${AWS::Partition}:codepipeline:${AWS::Region}:${AWS::AccountId}:${Codepipeline}" },
+                        "RoleArn": {
+                            "Fn::GetAtt": [ "CloudWatchEventRole", "Arn" ]
+                        },
+                        "Id": "codepipeline-start-execution"
+                    }
+                ]
+            }
         }
-        
-    },
-    "Outputs": {
-
     }
 }
