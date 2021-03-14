@@ -29,24 +29,24 @@
       }
     },
     "S3StaticSiteBucketPolicy": {
-        "Type": "AWS::S3::BucketPolicy",
-        "Properties": {
-            "Bucket" : { "Ref": "S3StaticSiteBucket" },
-            "PolicyDocument" : {
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Sid": "PublicReadGetObject",
-                        "Effect": "Allow",
-                        "Principal": "*",
-                        "Action": [ "s3:GetObject" ],
-                        "Resource": [
-                            { "Fn::Sub": "arn:${AWS::Partition}:s3:::${DomainName}/*" }
-                        ]
-                    }
-                ]
+      "Type": "AWS::S3::BucketPolicy",
+      "Properties": {
+        "Bucket": {"Ref": "S3StaticSiteBucket"},
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "PublicReadGetObject",
+              "Effect": "Allow",
+              "Principal": "*",
+              "Action": ["s3:GetObject"],
+              "Resource": [
+                {"Fn::Sub": "arn:${AWS::Partition}:s3:::${DomainName}/*"}
+              ]
             }
+          ]
         }
+      }
     },
     "HtmlCodeRepository": {
       "Type": "AWS::CodeCommit::Repository",
@@ -236,7 +236,7 @@
                 },
                 "InputArtifacts": [],
                 "Name": "SourceAction",
-                "OutputArtifacts": [ { "Name": "SourceOutput" } ],
+                "OutputArtifacts": [{"Name": "SourceOutput"}],
                 "RunOrder": 1
               }
             ]
@@ -252,10 +252,10 @@
                   "Provider": "S3"
                 },
                 "Configuration": {
-                  "BucketName": { "Ref": "S3StaticSiteBucket" },
+                  "BucketName": {"Ref": "S3StaticSiteBucket"},
                   "Extract": true
                 },
-                "InputArtifacts": [ { "Name": "SourceOutput" } ],
+                "InputArtifacts": [{"Name": "SourceOutput"}],
                 "Name": "CopyFilesToS3",
                 "RunOrder": 1
               },
@@ -317,11 +317,7 @@
                   "Action": ["iam:PassRole"],
                   "Resource": "*"
                 },
-                {
-                    "Effect": "Allow", 
-                    "Action": [ "s3:*" ], 
-                    "Resource": "*"
-                }
+                {"Effect": "Allow", "Action": ["s3:*"], "Resource": "*"}
               ]
             }
           }
