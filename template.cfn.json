@@ -28,6 +28,19 @@
         }
       }
     },
+    "S3StaticSiteBucketWWW": {
+        "Type": "AWS::S3::Bucket",
+        "Properties": {
+          "AccessControl": "PublicRead",
+          "BucketName": {"Fn::Sub": "www.${DomainName}"},
+          "WebsiteConfiguration": {
+              "RedirectAllRequestsTo": {
+                  "HostName": {"Ref": "DomainName"},
+                  "Protocol": "https"
+              }
+          }
+        }
+    },
     "S3StaticSiteBucketPolicy": {
       "Type": "AWS::S3::BucketPolicy",
       "Properties": {
@@ -48,6 +61,26 @@
         }
       }
     },
+    "S3StaticSiteBucketPolicyWWW": {
+        "Type": "AWS::S3::BucketPolicy",
+        "Properties": {
+          "Bucket": {"Ref": "S3StaticSiteBucketWWW"},
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Sid": "PublicReadGetObject",
+                "Effect": "Allow",
+                "Principal": "*",
+                "Action": ["s3:GetObject"],
+                "Resource": [
+                  {"Fn::Sub": "arn:${AWS::Partition}:s3:::www.${DomainName}/*"}
+                ]
+              }
+            ]
+          }
+        }
+      },  
     "HtmlCodeRepository": {
       "Type": "AWS::CodeCommit::Repository",
       "Properties": {
@@ -90,10 +123,42 @@
         }
       }
     },
+    "CloudfrontDistributionWWW": {
+        "Type": "AWS::CloudFront::Distribution",
+        "Properties": {
+          "DistributionConfig": {
+            "Aliases": [{"Fn::Sub": "www.${DomainName}"}],
+            "Comment": {"Fn::Sub": "www.${DomainName}"},
+            "DefaultCacheBehavior": {
+              "CachePolicyId": "658327ea-f89d-4fab-a63d-7e88639e58f6",
+              "Compress": true,
+              "TargetOriginId": "root-s3-website",
+              "ViewerProtocolPolicy": "redirect-to-https"
+            },
+            "Origins": [
+              {
+                "CustomOriginConfig": {
+                  "HTTPPort": 80,
+                  "OriginProtocolPolicy": "http-only"
+                },
+                "DomainName": {
+                  "Fn::Sub": "www.${DomainName}.s3-website.${AWS::Region}.amazonaws.com"
+                },
+                "Id": "root-s3-website"
+              }
+            ],
+            "Enabled": true,
+            "ViewerCertificate": {
+              "AcmCertificateArn": {"Ref": "HTTPSCertificate"},
+              "SslSupportMethod": "sni-only"
+            }
+          }
+        }
+      },  
     "HTTPSCertificate": {
       "Type": "AWS::CertificateManager::Certificate",
       "Properties": {
-        "DomainName": {"Ref": "DomainName"},
+        "DomainName": {"Fn::Sub": "*.${DomainName}"},
         "ValidationMethod": "DNS",
         "DomainValidationOptions": [
           {
@@ -116,6 +181,19 @@
         "HostedZoneId": {"Ref": "Route53HostedZoneID"}
       }
     },
+    "Route53ARecordWWW": {
+        "Type": "AWS::Route53::RecordSet",
+        "DependsOn": "CloudfrontDistribution",
+        "Properties": {
+          "Name": {"Fn::Sub": "www.${DomainName}"},
+          "Type": "A",
+          "AliasTarget": {
+            "DNSName": {"Fn::GetAtt": ["CloudfrontDistribution", "DomainName"]},
+            "HostedZoneId": "Z2FDTNDATAQYW2"
+          },
+          "HostedZoneId": {"Ref": "Route53HostedZoneID"}
+        }
+      },  
     "LambdaCloudfrontInvalidate": {
       "Type": "AWS::Lambda::Function",
       "Properties": {
