@@ -158,11 +158,16 @@
     "HTTPSCertificate": {
       "Type": "AWS::CertificateManager::Certificate",
       "Properties": {
-        "DomainName": {"Fn::Sub": "*.${DomainName}"},
+        "DomainName": {"Ref": "DomainName"},
+        "SubjectAlternativeNames": [{"Fn::Sub": "www.${DomainName}"}],
         "ValidationMethod": "DNS",
         "DomainValidationOptions": [
           {
             "DomainName": {"Ref": "DomainName"},
+            "HostedZoneId": {"Ref": "Route53HostedZoneID"}
+          },
+          {
+            "DomainName": {"Fn::Sub": "www.${DomainName}"},
             "HostedZoneId": {"Ref": "Route53HostedZoneID"}
           }
         ]
