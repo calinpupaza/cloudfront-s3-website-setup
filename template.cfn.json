@@ -7,7 +7,7 @@
       "Type": "String"
     },
     "Route53HostedZoneID": {
-      "Description": "The existing Rote53 zone that will host the A records for the websites.",
+      "Description": "The existing Route53 zone that will host the A records for the websites.",
       "Type": "AWS::Route53::HostedZone::Id"
     },
     "BranchName": {

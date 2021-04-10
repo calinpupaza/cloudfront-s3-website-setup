@@ -52,3 +52,8 @@ To delete all resources created by this stack.
 ```
 aws cloudformation delete-stack --stack-name website-pragmatiqsoft --profile calin-dev --region us-east-1
 ```
+
+## Notes
+
+Managed Cache Policy for Cloudfront
+https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/using-managed-cache-policies.html
